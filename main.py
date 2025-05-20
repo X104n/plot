@@ -17,7 +17,7 @@ def read_data(file_path):
     return np.array(times)
 
 # Path to your data file
-file_path = 'data/domain_app_1m_nzt.csv'  # Replace with your actual file path
+file_path = 'data/domain_app.csv'  # Replace with your actual file path
 
 # Read the data
 travel_times = read_data(file_path)
