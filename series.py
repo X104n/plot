@@ -95,7 +95,7 @@ def remove_outliers(data, method='iqr', threshold=1.5):
 
 
 # Function to downsample data for plotting
-def downsample_data(data, indices=None, max_points=100000):
+def downsample_data(data, indices=None, max_points=100_000):
     """Downsample data to a manageable size for plotting"""
     if indices is None:
         indices = np.arange(len(data))
@@ -131,7 +131,7 @@ def downsample_data(data, indices=None, max_points=100000):
 
 
 # Path to your data file
-file_path = 'data/domain_app.csv'  # Change to your actual file path
+file_path = 'data/domain_app_1m_zt.csv'  # Change to your actual file path
 
 # Read the data
 travel_times = read_data(file_path)
@@ -163,8 +163,8 @@ print(f"- Std Dev: {orig_std:.2f} ms")
 # Remove outliers
 print("\nRemoving outliers...")
 # Choose outlier removal method: 'iqr', 'std', 'percentile', or None
-outlier_method = 'iqr'  # Standard IQR method
-outlier_threshold = 1.5  # Standard threshold for IQR method
+outlier_method = 'None'  # Standard IQR method
+outlier_threshold = 5  # Standard threshold for IQR method
 
 if outlier_method:
     filtered_data, outlier_mask = remove_outliers(travel_times_ms, method=outlier_method, threshold=outlier_threshold)
@@ -254,7 +254,7 @@ plt.legend(loc='upper right')
 
 # Set y-axis limits to give some padding
 y_range = max_time - min_time
-plt.ylim(min_time - 0.1 * y_range, max_time + 0.1 * y_range)
+plt.ylim(min_time - 0.2 * y_range, max_time + 0.2 * y_range)
 
 # Make the plot look nice
 plt.tight_layout()
@@ -262,7 +262,7 @@ plt.tight_layout()
 # Save the figure
 print("Saving figure...")
 if outlier_method:
-    filename = f'network_times_no_outliers_{outlier_method}.png'
+    filename = f'images/{outlier_method}/{file_path.split('/')[1]}.png'
 else:
     filename = 'large_network_times.png'
 plt.savefig(filename, dpi=300, bbox_inches='tight')
