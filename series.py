@@ -163,8 +163,8 @@ print(f"- Std Dev: {orig_std:.2f} ms")
 # Remove outliers
 print("\nRemoving outliers...")
 # Choose outlier removal method: 'iqr', 'std', 'percentile', or None
-outlier_method = 'None'  # Standard IQR method
-outlier_threshold = 5  # Standard threshold for IQR method
+outlier_method = 'percentile'  # Standard IQR method
+outlier_threshold = 0.01  # Standard threshold for IQR method
 
 if outlier_method:
     filtered_data, outlier_mask = remove_outliers(travel_times_ms, method=outlier_method, threshold=outlier_threshold)
