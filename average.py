@@ -1,4 +1,4 @@
-with open("dataOld/domain_app_overnight_zt.csv", "r") as f:
+with open("data/nzt5/domain_app5.csv", "r") as f:
     text = f.read()
 time_list = text.splitlines()
 i = 0
@@ -9,4 +9,22 @@ while True:
     if i >= len(time_list):
         break
 
+
 print(f"Average time: {total / i}")
+
+def maximum():
+    """
+    Calculate the maximum value from a list of numbers in a file.
+    """
+    with open("data/nzt5/domain_app5.csv", "r") as f:
+        text = f.read()
+    time_list = text.splitlines()
+
+    max_value = float(time_list[0])
+    for time in time_list:
+        if float(time) > max_value:
+            max_value = float(time)
+
+    print(f"Maximum value: {max_value}")
+
+print(maximum())
