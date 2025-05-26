@@ -128,7 +128,7 @@ class NetworkSimulationAnalyzer:
 
         return stats_summary
 
-    def print_statistics_summary(self, stats: Dict):
+    def print_statistics_summary(self, statistics: Dict):
         """Print a comprehensive statistics summary"""
         print("\n" + "=" * 80)
         print("NETWORK SIMULATION STATISTICS SUMMARY")
@@ -138,22 +138,22 @@ class NetworkSimulationAnalyzer:
         print(f"\n{'Domains':<8} {'Mean (ms)':<12} {'Median (ms)':<14} {'Std Dev':<12} {'CV (%)':<8} {'Count':<10}")
         print("-" * 70)
 
-        for num_domains in sorted(stats.keys()):
-            overall = stats[num_domains]['overall']
+        for num_domains in sorted(statistics.keys()):
+            overall = statistics[num_domains]['overall']
             print(f"{num_domains:<8} {overall['mean']:<12.2f} {overall['median']:<14.2f} "
                   f"{overall['std']:<12.2f} {overall['cv']:<8.2f} {overall['count']:<10,}")
 
         # Detailed breakdown for each simulation
-        for num_domains in sorted(stats.keys()):
+        for num_domains in sorted(statistics.keys()):
             print(f"\n{num_domains} Active Domains - Detailed Breakdown:")
             print("-" * 50)
 
-            for domain in stats[num_domains]['domains']:
+            for domain in statistics[num_domains]['domains']:
                 print(f"  {domain['domain_name']}:")
                 print(f"    Mean: {domain['mean']:.2f} ms, Median: {domain['median']:.2f} ms")
                 print(f"    Count: {domain['count']:,}, Outliers removed: {domain['outliers_removed']:,}")
 
-    def create_comparison_plots(self, stats: Dict, output_dir: str = "images"):
+    def create_comparison_plots(self, statistics: Dict, output_dir: str = "images"):
         """Create comprehensive comparison plots for thesis"""
         output_path = Path(output_dir)
         output_path.mkdir(exist_ok=True)
@@ -162,16 +162,16 @@ class NetworkSimulationAnalyzer:
         self._create_time_series_plot(output_path)
 
         # 2. Box plot comparison
-        self._create_box_plot_comparison(stats, output_path)
+        self._create_box_plot_comparison(statistics, output_path)
 
         # 3. Distribution comparison
         self._create_distribution_comparison(output_path)
 
         # 4. Scalability analysis
-        self._create_scalability_analysis(stats, output_path)
+        self._create_scalability_analysis(statistics, output_path)
 
         # 5. Statistical summary table
-        self._create_summary_table(stats, output_path)
+        self._create_summary_table(statistics, output_path)
 
     def _create_time_series_plot(self, output_path: Path):
         """Create time series plot showing stability over time"""
@@ -236,7 +236,7 @@ class NetworkSimulationAnalyzer:
         plt.close()
         print(f"Saved: {output_path / 'time_series_stability.png'}")
 
-    def _create_box_plot_comparison(self, stats: Dict, output_path: Path):
+    def _create_box_plot_comparison(self, statistics: Dict, output_path: Path):
         """Create box plot comparison across simulations"""
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
 
@@ -325,16 +325,16 @@ class NetworkSimulationAnalyzer:
         plt.close()
         print(f"Saved: {output_path / 'distribution_comparison.png'}")
 
-    def _create_scalability_analysis(self, stats: Dict, output_path: Path):
+    def _create_scalability_analysis(self, statistics: Dict, output_path: Path):
         """Create scalability analysis plot"""
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
 
         # Extract data for plotting
-        domains = sorted(stats.keys())
-        means = [stats[d]['overall']['mean'] for d in domains]
-        medians = [stats[d]['overall']['median'] for d in domains]
-        stds = [stats[d]['overall']['std'] for d in domains]
-        cvs = [stats[d]['overall']['cv'] for d in domains]
+        domains = sorted(statistics.keys())
+        means = [statistics[d]['overall']['mean'] for d in domains]
+        medians = [statistics[d]['overall']['median'] for d in domains]
+        stds = [statistics[d]['overall']['std'] for d in domains]
+        cvs = [statistics[d]['overall']['cv'] for d in domains]
 
         # Mean travel time vs domains
         ax1.plot(domains, means, 'o-', linewidth=2, markersize=8, color=self.colors[0])
@@ -380,7 +380,7 @@ class NetworkSimulationAnalyzer:
         plt.close()
         print(f"Saved: {output_path / 'scalability_analysis.png'}")
 
-    def _create_summary_table(self, stats: Dict, output_path: Path):
+    def _create_summary_table(self, statistics: Dict, output_path: Path):
         """Create a summary table image"""
         fig, ax = plt.subplots(figsize=(12, 6))
         ax.axis('tight')
@@ -391,8 +391,8 @@ class NetworkSimulationAnalyzer:
         headers = ['Active Domains', 'Mean (ms)', 'Median (ms)', 'Std Dev (ms)',
                    'CV (%)', 'Min (ms)', 'Max (ms)', 'Sample Size']
 
-        for num_domains in sorted(stats.keys()):
-            overall = stats[num_domains]['overall']
+        for num_domains in sorted(statistics.keys()):
+            overall = statistics[num_domains]['overall']
             row = [
                 f"{num_domains}",
                 f"{overall['mean']:.2f}",
@@ -429,7 +429,7 @@ class NetworkSimulationAnalyzer:
         plt.close()
         print(f"Saved: {output_path / 'summary_table.png'}")
 
-    def perform_statistical_tests(self, stats: Dict):
+    def perform_statistical_tests(self, statistics: Dict):
         """Perform statistical tests to support thesis claims"""
         print("\n" + "=" * 80)
         print("STATISTICAL ANALYSIS FOR THESIS")
@@ -437,8 +437,8 @@ class NetworkSimulationAnalyzer:
 
         # Test for significant differences between simulations
         simulation_pairs = []
-        for i, num_domains_i in enumerate(sorted(stats.keys())):
-            for j, num_domains_j in enumerate(sorted(stats.keys())):
+        for i, num_domains_i in enumerate(sorted(statistics.keys())):
+            for j, num_domains_j in enumerate(sorted(statistics.keys())):
                 if i < j:
                     simulation_pairs.append((num_domains_i, num_domains_j))
 
@@ -480,8 +480,8 @@ class NetworkSimulationAnalyzer:
         # Trend analysis
         print("Trend Analysis:")
         print("-" * 50)
-        domains = sorted(stats.keys())
-        means = [stats[d]['overall']['mean'] for d in domains]
+        domains = sorted(statistics.keys())
+        means = [statistics[d]['overall']['mean'] for d in domains]
 
         # Linear regression for trend
         slope, intercept, r_value, p_value, std_err = stats.linregress(domains, means)
@@ -515,17 +515,17 @@ def main():
 
     # Calculate statistics
     print("\nCalculating statistics...")
-    stats = analyzer.calculate_statistics()
+    statistics = analyzer.calculate_statistics()
 
     # Print summary
-    analyzer.print_statistics_summary(stats)
+    analyzer.print_statistics_summary(statistics)
 
     # Perform statistical tests
-    analyzer.perform_statistical_tests(stats)
+    analyzer.perform_statistical_tests(statistics)
 
     # Create all plots
     print("\nGenerating plots...")
-    analyzer.create_comparison_plots(stats)
+    analyzer.create_comparison_plots(statistics)
 
     print("\n" + "=" * 80)
     print("ANALYSIS COMPLETE!")

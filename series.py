@@ -131,7 +131,7 @@ def downsample_data(data, indices=None, max_points=100_000):
 
 
 # Path to your dataOld file
-file_path = 'dataOld/domain_app_1m_nzt.csv'  # Change to your actual file path
+file_path = 'data/nzt5/domain_app5.csv'  # Change to your actual file path
 
 # Read the dataOld
 travel_times = read_data(file_path)
@@ -164,7 +164,7 @@ print(f"- Std Dev: {orig_std:.2f} ms")
 print("\nRemoving outliers...")
 # Choose outlier removal method: 'iqr', 'std', 'percentile', or None
 outlier_method = 'percentile'  # Standard IQR method
-outlier_threshold = 0.00  # Standard threshold for IQR method
+outlier_threshold = 0.5  # Standard threshold for IQR method
 
 if outlier_method:
     filtered_data, outlier_mask = remove_outliers(travel_times_ms, method=outlier_method, threshold=outlier_threshold)
