@@ -3,7 +3,7 @@ import matplotlib.ticker as ticker
 import numpy as np
 
 # Read the file and convert values to float
-with open("data/domain_app_overnight_zt.csv", "r") as f:
+with open("dataOld/domain_app_overnight_zt.csv", "r") as f:
     text = f.read()
 
 time_list = [float(x) for x in text.splitlines()]

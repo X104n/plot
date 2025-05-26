@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 
-# Function to read the data file
+# Function to read the dataOld file
 def read_data(file_path):
     times = []
     with open(file_path, 'r') as file:
@@ -16,10 +16,10 @@ def read_data(file_path):
                     pass  # Skip lines that can't be converted to float
     return np.array(times)
 
-# Path to your data file
-file_path = 'data/domain_app_overnight_zt.csv'  # Replace with your actual file path
+# Path to your dataOld file
+file_path = 'dataOld/domain_app_overnight_zt.csv'  # Replace with your actual file path
 
-# Read the data
+# Read the dataOld
 travel_times = read_data(file_path)
 
 # Convert to milliseconds for better readability

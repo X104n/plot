@@ -9,18 +9,18 @@ mpl.rcParams['agg.path.chunksize'] = 10000  # Increase chunk size as suggested i
 mpl.rcParams['path.simplify'] = True
 mpl.rcParams['path.simplify_threshold'] = 0.5  # Higher value = more simplification
 
-print("Starting data analysis...")
+print("Starting dataOld analysis...")
 start_time = time.time()
 
 
-# Function to read the data file - optimized for large files
+# Function to read the dataOld file - optimized for large files
 def read_data(file_path):
-    print(f"Reading data from {file_path}...")
+    print(f"Reading dataOld from {file_path}...")
     try:
         # Use pandas with chunking for large files
         df = pd.read_csv(file_path, header=None)
         data = df.iloc[:, 0].to_numpy()
-        print(f"Successfully read {len(data)} data points")
+        print(f"Successfully read {len(data)} dataOld points")
         return data
     except Exception as e:
         print(f"Error with pandas: {e}")
@@ -36,7 +36,7 @@ def read_data(file_path):
                             times.append(value)
                         except ValueError:
                             pass  # Skip lines that can't be converted to float
-                print(f"Successfully read {len(times)} data points using fallback method")
+                print(f"Successfully read {len(times)} dataOld points using fallback method")
                 return np.array(times)
         except Exception as e:
             print(f"Error reading file: {e}")
@@ -49,12 +49,12 @@ def remove_outliers(data, method='iqr', threshold=1.5):
     Remove outliers from the dataset
 
     Parameters:
-    - data: numpy array of data points
+    - dataOld: numpy array of dataOld points
     - method: 'iqr' (Interquartile Range), 'std' (Standard Deviation), or 'percentile'
     - threshold: multiplier for IQR or std methods, or percentile range (0-100) for percentile method
 
     Returns:
-    - Filtered data without outliers
+    - Filtered dataOld without outliers
     - Boolean mask indicating which points are outliers
     """
     if method == 'iqr':
@@ -94,9 +94,9 @@ def remove_outliers(data, method='iqr', threshold=1.5):
     return filtered_data, mask
 
 
-# Function to downsample data for plotting
+# Function to downsample dataOld for plotting
 def downsample_data(data, indices=None, max_points=100_000):
-    """Downsample data to a manageable size for plotting"""
+    """Downsample dataOld to a manageable size for plotting"""
     if indices is None:
         indices = np.arange(len(data))
 
@@ -130,29 +130,29 @@ def downsample_data(data, indices=None, max_points=100_000):
     return downsampled_indices[sorted_order], downsampled[sorted_order]
 
 
-# Path to your data file
-file_path = 'data/domain_app_1m_nzt.csv'  # Change to your actual file path
+# Path to your dataOld file
+file_path = 'dataOld/domain_app_1m_nzt.csv'  # Change to your actual file path
 
-# Read the data
+# Read the dataOld
 travel_times = read_data(file_path)
 
-# Check if we have data
+# Check if we have dataOld
 if len(travel_times) == 0:
-    print("No data was read. Exiting.")
+    print("No dataOld was read. Exiting.")
     exit()
 
 # Convert to milliseconds for better readability
 travel_times_ms = travel_times * 1000
 
 # Calculate statistics on the full dataset
-print("Calculating statistics for original data...")
+print("Calculating statistics for original dataOld...")
 orig_mean = np.mean(travel_times_ms)
 orig_median = np.median(travel_times_ms)
 orig_min = np.min(travel_times_ms)
 orig_max = np.max(travel_times_ms)
 orig_std = np.std(travel_times_ms)
 
-print(f"Original data statistics:")
+print(f"Original dataOld statistics:")
 print(f"- Total points: {len(travel_times_ms):,}")
 print(f"- Min: {orig_min:.2f} ms")
 print(f"- Max: {orig_max:.2f} ms")
@@ -169,18 +169,18 @@ outlier_threshold = 0.00  # Standard threshold for IQR method
 if outlier_method:
     filtered_data, outlier_mask = remove_outliers(travel_times_ms, method=outlier_method, threshold=outlier_threshold)
 
-    # Keep track of original indices for the filtered data
+    # Keep track of original indices for the filtered dataOld
     original_indices = np.arange(len(travel_times_ms))[outlier_mask]
 
     # Calculate statistics on the filtered dataset
-    print("\nCalculating statistics for filtered data...")
+    print("\nCalculating statistics for filtered dataOld...")
     mean_time = np.mean(filtered_data)
     median_time = np.median(filtered_data)
     min_time = np.min(filtered_data)
     max_time = np.max(filtered_data)
     std_dev = np.std(filtered_data)
 
-    print(f"Filtered data statistics:")
+    print(f"Filtered dataOld statistics:")
     print(f"- Total points: {len(filtered_data):,}")
     print(f"- Min: {min_time:.2f} ms")
     print(f"- Max: {max_time:.2f} ms")
@@ -197,15 +197,15 @@ else:
     max_time = orig_max
     std_dev = orig_std
 
-# Downsample data for plotting
-print("\nDownsampling data for plotting...")
+# Downsample dataOld for plotting
+print("\nDownsampling dataOld for plotting...")
 indices, downsampled_data = downsample_data(filtered_data, indices=original_indices, max_points=50000)
 
 # Create a figure
 print("Creating figure...")
 plt.figure(figsize=(12, 8))
 
-# Plot the downsampled data
+# Plot the downsampled dataOld
 plt.scatter(indices, downsampled_data, s=2, color='blue', alpha=0.5,
             label=f'Data points (downsampled from {len(filtered_data):,} to {len(indices):,})')
 
@@ -219,7 +219,7 @@ plt.axhline(y=mean_time, color='r', linestyle='-',
 plt.axhline(y=median_time, color='g', linestyle='--',
             label=f'Median: {median_time:.2f} ms')
 
-# Add min and max annotations - we know these are in our downsampled data
+# Add min and max annotations - we know these are in our downsampled dataOld
 min_plot_idx = np.argmin(downsampled_data)
 max_plot_idx = np.argmax(downsampled_data)
 
