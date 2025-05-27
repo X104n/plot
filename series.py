@@ -2,274 +2,536 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+from pathlib import Path
 import time
+from scipy import stats
+import seaborn as sns
+from typing import Dict, List, Tuple
+import warnings
 
-# Configure matplotlib for large datasets
-mpl.rcParams['agg.path.chunksize'] = 10000  # Increase chunk size as suggested in the error
-mpl.rcParams['path.simplify'] = True
-mpl.rcParams['path.simplify_threshold'] = 0.5  # Higher value = more simplification
+warnings.filterwarnings('ignore')
 
-print("Starting dataOld analysis...")
-start_time = time.time()
-
-
-# Function to read the dataOld file - optimized for large files
-def read_data(file_path):
-    print(f"Reading dataOld from {file_path}...")
-    try:
-        # Use pandas with chunking for large files
-        df = pd.read_csv(file_path, header=None)
-        data = df.iloc[:, 0].to_numpy()
-        print(f"Successfully read {len(data)} dataOld points")
-        return data
-    except Exception as e:
-        print(f"Error with pandas: {e}")
-        try:
-            # Fallback to line-by-line reading
-            with open(file_path, 'r') as file:
-                times = []
-                for line in file:
-                    line = line.strip()
-                    if line:  # Skip empty lines
-                        try:
-                            value = float(line)
-                            times.append(value)
-                        except ValueError:
-                            pass  # Skip lines that can't be converted to float
-                print(f"Successfully read {len(times)} dataOld points using fallback method")
-                return np.array(times)
-        except Exception as e:
-            print(f"Error reading file: {e}")
-            return np.array([])
+# Configure matplotlib for better plots
+mpl.rcParams['figure.dpi'] = 100
+mpl.rcParams['savefig.dpi'] = 300
+mpl.rcParams['font.size'] = 10
+mpl.rcParams['axes.titlesize'] = 12
+mpl.rcParams['axes.labelsize'] = 11
+mpl.rcParams['xtick.labelsize'] = 9
+mpl.rcParams['ytick.labelsize'] = 9
+mpl.rcParams['legend.fontsize'] = 9
 
 
-# Function to remove outliers using different methods
-def remove_outliers(data, method='iqr', threshold=1.5):
-    """
-    Remove outliers from the dataset
+class NetworkSimulationAnalyzer:
+    """Analyzer for network simulation data to support thesis on scalability"""
 
-    Parameters:
-    - dataOld: numpy array of dataOld points
-    - method: 'iqr' (Interquartile Range), 'std' (Standard Deviation), or 'percentile'
-    - threshold: multiplier for IQR or std methods, or percentile range (0-100) for percentile method
+    def __init__(self, base_path: str = "data"):
+        self.base_path = Path(base_path)
+        self.simulations = {}
+        self.colors = ['#2E86C1', '#28B463', '#F39C12', '#E74C3C', '#8E44AD']
 
-    Returns:
-    - Filtered dataOld without outliers
-    - Boolean mask indicating which points are outliers
-    """
-    if method == 'iqr':
-        # IQR method
-        q1, q3 = np.percentile(data, [25, 75])
-        iqr = q3 - q1
-        lower_bound = q1 - threshold * iqr
-        upper_bound = q3 + threshold * iqr
-        mask = (data >= lower_bound) & (data <= upper_bound)
-        print(f"IQR outlier removal: bounds [{lower_bound:.2f}, {upper_bound:.2f}]")
+    def load_simulation_data(self) -> Dict:
+        """Load all simulation data from organized directory structure"""
+        print("Loading simulation data...")
 
-    elif method == 'std':
-        # Standard deviation method
-        mean = np.mean(data)
-        std = np.std(data)
-        lower_bound = mean - threshold * std
-        upper_bound = mean + threshold * std
-        mask = (data >= lower_bound) & (data <= upper_bound)
-        print(f"STD outlier removal: bounds [{lower_bound:.2f}, {upper_bound:.2f}]")
+        # Expected structure: nzt1, nzt3, nzt5 directories
+        simulation_dirs = ['zt1', 'zt3', 'zt5']
 
-    elif method == 'percentile':
-        # Percentile method (threshold is the percentile range to keep, e.g., 5 means keep 5th to 95th percentile)
-        lower_bound = np.percentile(data, threshold)
-        upper_bound = np.percentile(data, 100 - threshold)
-        mask = (data >= lower_bound) & (data <= upper_bound)
-        print(f"Percentile outlier removal: bounds [{lower_bound:.2f}, {upper_bound:.2f}]")
+        for sim_dir in simulation_dirs:
+            sim_path = self.base_path / sim_dir
+            if not sim_path.exists():
+                print(f"Warning: Directory {sim_path} not found")
+                continue
 
-    else:
-        # No outlier removal
-        print("No outlier removal performed")
-        return data, np.ones(len(data), dtype=bool)
+            # Extract number of active domains from directory name
+            num_domains = int(sim_dir.replace('zt', ''))
 
-    filtered_data = data[mask]
-    print(
-        f"Removed {len(data) - len(filtered_data)} outliers ({100 * (len(data) - len(filtered_data)) / len(data):.2f}%)")
+            # Load all CSV files in this simulation directory
+            csv_files = list(sim_path.glob("*.csv"))
 
-    return filtered_data, mask
+            if not csv_files:
+                print(f"Warning: No CSV files found in {sim_path}")
+                continue
+
+            simulation_data = []
+            domain_names = []
+
+            for csv_file in csv_files:
+                try:
+                    # Load the CSV file
+                    df = pd.read_csv(csv_file, header=None)
+                    if len(df.columns) > 0:
+                        # Convert to milliseconds and store
+                        times_ms = df.iloc[:, 0].values * 1000
+                        simulation_data.append(times_ms)
+                        domain_names.append(csv_file.stem)
+                        print(f"  Loaded {csv_file.name}: {len(times_ms):,} data points")
+                except Exception as e:
+                    print(f"  Error loading {csv_file.name}: {e}")
+
+            if simulation_data:
+                self.simulations[num_domains] = {
+                    'data': simulation_data,
+                    'domain_names': domain_names,
+                    'path': sim_path
+                }
+
+        print(f"Loaded {len(self.simulations)} simulations")
+        return self.simulations
+
+    def calculate_statistics(self) -> Dict:
+        """Calculate comprehensive statistics for each simulation"""
+        stats_summary = {}
+
+        for num_domains, sim_data in self.simulations.items():
+            domain_stats = []
+            combined_data = []
+
+            for i, domain_data in enumerate(sim_data['data']):
+                # Remove outliers using IQR method
+                q1, q3 = np.percentile(domain_data, [25, 75])
+                iqr = q3 - q1
+                lower_bound = q1 - 1.5 * iqr
+                upper_bound = q3 + 1.5 * iqr
+                cleaned_data = domain_data[(domain_data >= lower_bound) & (domain_data <= upper_bound)]
+
+                # Calculate statistics
+                domain_stat = {
+                    'domain_name': sim_data['domain_names'][i],
+                    'count': len(cleaned_data),
+                    'mean': np.mean(cleaned_data),
+                    'median': np.median(cleaned_data),
+                    'std': np.std(cleaned_data),
+                    'min': np.min(cleaned_data),
+                    'max': np.max(cleaned_data),
+                    'q25': np.percentile(cleaned_data, 25),
+                    'q75': np.percentile(cleaned_data, 75),
+                    'outliers_removed': len(domain_data) - len(cleaned_data)
+                }
+                domain_stats.append(domain_stat)
+                combined_data.extend(cleaned_data)
+
+            # Overall simulation statistics
+            if combined_data:
+                stats_summary[num_domains] = {
+                    'domains': domain_stats,
+                    'overall': {
+                        'count': len(combined_data),
+                        'mean': np.mean(combined_data),
+                        'median': np.median(combined_data),
+                        'std': np.std(combined_data),
+                        'min': np.min(combined_data),
+                        'max': np.max(combined_data),
+                        'cv': np.std(combined_data) / np.mean(combined_data) * 100  # Coefficient of variation
+                    }
+                }
+
+        return stats_summary
+
+    def print_statistics_summary(self, statistics: Dict):
+        """Print a comprehensive statistics summary"""
+        print("\n" + "=" * 80)
+        print("NETWORK SIMULATION STATISTICS SUMMARY")
+        print("=" * 80)
+
+        # Overall comparison table
+        print(f"\n{'Domains':<8} {'Mean (ms)':<12} {'Median (ms)':<14} {'Std Dev':<12} {'CV (%)':<8} {'Count':<10}")
+        print("-" * 70)
+
+        for num_domains in sorted(statistics.keys()):
+            overall = statistics[num_domains]['overall']
+            print(f"{num_domains:<8} {overall['mean']:<12.2f} {overall['median']:<14.2f} "
+                  f"{overall['std']:<12.2f} {overall['cv']:<8.2f} {overall['count']:<10,}")
+
+        # Detailed breakdown for each simulation
+        for num_domains in sorted(statistics.keys()):
+            print(f"\n{num_domains} Active Domains - Detailed Breakdown:")
+            print("-" * 50)
+
+            for domain in statistics[num_domains]['domains']:
+                print(f"  {domain['domain_name']}:")
+                print(f"    Mean: {domain['mean']:.2f} ms, Median: {domain['median']:.2f} ms")
+                print(f"    Count: {domain['count']:,}, Outliers removed: {domain['outliers_removed']:,}")
+
+    def create_comparison_plots(self, statistics: Dict, output_dir: str = "images"):
+        """Create comprehensive comparison plots for thesis"""
+        output_path = Path(output_dir)
+        output_path.mkdir(exist_ok=True)
+
+        # 1. Time series comparison plot
+        self._create_time_series_plot(output_path)
+
+        # 2. Box plot comparison
+        self._create_box_plot_comparison(statistics, output_path)
+
+        # 3. Distribution comparison
+        self._create_distribution_comparison(output_path)
+
+        # 4. Scalability analysis
+        self._create_scalability_analysis(statistics, output_path)
+
+        # 5. Statistical summary table
+        self._create_summary_table(statistics, output_path)
+
+    def _create_time_series_plot(self, output_path: Path):
+        """Create time series plot showing stability over time"""
+        fig, axes = plt.subplots(len(self.simulations), 1,
+                                 figsize=(14, 4 * len(self.simulations)),
+                                 sharex=False)
+
+        if len(self.simulations) == 1:
+            axes = [axes]
+
+        for idx, (num_domains, sim_data) in enumerate(sorted(self.simulations.items())):
+            ax = axes[idx]
+
+            # Combine all domain data for this simulation
+            all_data = []
+            all_indices = []
+            current_idx = 0
+
+            for domain_data in sim_data['data']:
+                # Clean data
+                q1, q3 = np.percentile(domain_data, [25, 75])
+                iqr = q3 - q1
+                mask = (domain_data >= q1 - 1.5 * iqr) & (domain_data <= q3 + 1.5 * iqr)
+                cleaned_data = domain_data[mask]
+
+                # Downsample for plotting
+                if len(cleaned_data) > 5000:
+                    step = len(cleaned_data) // 5000
+                    cleaned_data = cleaned_data[::step]
+
+                indices = np.arange(current_idx, current_idx + len(cleaned_data))
+                all_data.extend(cleaned_data)
+                all_indices.extend(indices)
+                current_idx += len(cleaned_data)
+
+            # Plot the data
+            ax.scatter(all_indices, all_data, s=1, alpha=0.6,
+                       color=self.colors[idx % len(self.colors)])
+
+            # Add mean line
+            mean_val = np.mean(all_data)
+            ax.axhline(y=mean_val, color='green', linestyle='-', alpha=0.7,
+                       label=f'Mean: {mean_val:.2f} ms')
+
+            ax.set_title(f'{num_domains} Active Domains - Travel Time Stability',
+                         fontweight='bold')
+            ax.set_ylabel('Travel Time (ms)')
+            ax.grid(True, alpha=0.3)
+            ax.legend()
+
+        axes[-1].set_xlabel('Measurement Index')
+        plt.suptitle('Network Travel Time Stability Analysis', fontsize=16, fontweight='bold')
+        plt.tight_layout()
+        plt.savefig(output_path / 'time_series_stability.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Saved: {output_path / 'time_series_stability.png'}")
+
+    def _create_box_plot_comparison(self, statistics: Dict, output_path: Path):
+        """Create box plot comparison across simulations"""
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+
+        # Prepare data for box plots
+        domain_data = []
+        domain_labels = []
+        simulation_data = []
+        simulation_labels = []
+
+        for num_domains, sim_data in sorted(self.simulations.items()):
+            # Collect individual domain data
+            for i, domain_data_raw in enumerate(sim_data['data']):
+                # Clean data
+                q1, q3 = np.percentile(domain_data_raw, [25, 75])
+                iqr = q3 - q1
+                mask = (domain_data_raw >= q1 - 1.5 * iqr) & (domain_data_raw <= q3 + 1.5 * iqr)
+                cleaned = domain_data_raw[mask]
+
+                domain_data.append(cleaned)
+                domain_labels.append(f"{num_domains}D-{sim_data['domain_names'][i]}")
+
+            # Collect combined simulation data
+            combined = []
+            for domain_data_raw in sim_data['data']:
+                q1, q3 = np.percentile(domain_data_raw, [25, 75])
+                iqr = q3 - q1
+                mask = (domain_data_raw >= q1 - 1.5 * iqr) & (domain_data_raw <= q3 + 1.5 * iqr)
+                combined.extend(domain_data_raw[mask])
+
+            simulation_data.append(combined)
+            simulation_labels.append(f"{num_domains} Domains")
+
+        # Individual domains box plot
+        bp1 = ax1.boxplot(domain_data, labels=domain_labels, patch_artist=True)
+        for i, patch in enumerate(bp1['boxes']):
+            patch.set_facecolor(self.colors[i % len(self.colors)])
+            patch.set_alpha(0.7)
+
+        ax1.set_title('Travel Time Distribution by Domain', fontweight='bold')
+        ax1.set_ylabel('Travel Time (ms)')
+        ax1.tick_params(axis='x', rotation=45)
+        ax1.grid(True, alpha=0.3)
+
+        # Simulation comparison box plot
+        bp2 = ax2.boxplot(simulation_data, labels=simulation_labels, patch_artist=True)
+        for i, patch in enumerate(bp2['boxes']):
+            patch.set_facecolor(self.colors[i])
+            patch.set_alpha(0.7)
+
+        ax2.set_title('Travel Time Distribution by Load Level', fontweight='bold')
+        ax2.set_ylabel('Travel Time (ms)')
+        ax2.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        plt.savefig(output_path / 'boxplot_comparison.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Saved: {output_path / 'boxplot_comparison.png'}")
+
+    def _create_distribution_comparison(self, output_path: Path):
+        """Create distribution comparison plot"""
+        fig, ax = plt.subplots(figsize=(12, 8))
+
+        for i, (num_domains, sim_data) in enumerate(sorted(self.simulations.items())):
+            # Combine all data for this simulation
+            combined_data = []
+            for domain_data in sim_data['data']:
+                # Clean data
+                q1, q3 = np.percentile(domain_data, [25, 75])
+                iqr = q3 - q1
+                mask = (domain_data >= q1 - 1.5 * iqr) & (domain_data <= q3 + 1.5 * iqr)
+                combined_data.extend(domain_data[mask])
+
+            # Create histogram/density plot
+            ax.hist(combined_data, bins=50, alpha=0.6,
+                    label=f'{num_domains} Domains (n={len(combined_data):,})',
+                    color=self.colors[i], density=True)
+
+        ax.set_xlabel('Travel Time (ms)')
+        ax.set_ylabel('Density')
+        ax.set_title('Travel Time Distribution Comparison', fontweight='bold')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        plt.savefig(output_path / 'distribution_comparison.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Saved: {output_path / 'distribution_comparison.png'}")
+
+    def _create_scalability_analysis(self, statistics: Dict, output_path: Path):
+        """Create scalability analysis plot"""
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
+
+        # Extract data for plotting
+        domains = sorted(statistics.keys())
+        means = [statistics[d]['overall']['mean'] for d in domains]
+        medians = [statistics[d]['overall']['median'] for d in domains]
+        stds = [statistics[d]['overall']['std'] for d in domains]
+        cvs = [statistics[d]['overall']['cv'] for d in domains]
+
+        # Mean travel time vs domains
+        ax1.plot(domains, means, 'o-', linewidth=2, markersize=8, color=self.colors[0])
+        ax1.set_xlabel('Number of Active Domains')
+        ax1.set_ylabel('Mean Travel Time (ms)')
+        ax1.set_title('Mean Travel Time vs Load', fontweight='bold')
+        ax1.grid(True, alpha=0.3)
+
+        # Standard deviation vs domains
+        ax2.plot(domains, stds, 'o-', linewidth=2, markersize=8, color=self.colors[1])
+        ax2.set_xlabel('Number of Active Domains')
+        ax2.set_ylabel('Standard Deviation (ms)')
+        ax2.set_title('Variability vs Load', fontweight='bold')
+        ax2.grid(True, alpha=0.3)
+
+        # Coefficient of variation vs domains
+        ax3.plot(domains, cvs, 'o-', linewidth=2, markersize=8, color=self.colors[2])
+        ax3.set_xlabel('Number of Active Domains')
+        ax3.set_ylabel('Coefficient of Variation (%)')
+        ax3.set_title('Relative Variability vs Load', fontweight='bold')
+        ax3.grid(True, alpha=0.3)
+
+        # Combined plot
+        ax4_twin = ax4.twinx()
+        line1 = ax4.plot(domains, means, 'o-', linewidth=2, markersize=8,
+                         color=self.colors[0], label='Mean')
+        line2 = ax4_twin.plot(domains, cvs, 's--', linewidth=2, markersize=8,
+                              color=self.colors[2], label='CV (%)')
+
+        ax4.set_xlabel('Number of Active Domains')
+        ax4.set_ylabel('Mean Travel Time (ms)', color=self.colors[0])
+        ax4_twin.set_ylabel('Coefficient of Variation (%)', color=self.colors[2])
+        ax4.set_title('Scalability Summary', fontweight='bold')
+        ax4.grid(True, alpha=0.3)
+
+        # Combined legend
+        lines = line1 + line2
+        labels = [l.get_label() for l in lines]
+        ax4.legend(lines, labels, loc='upper left')
+
+        plt.tight_layout()
+        plt.savefig(output_path / 'scalability_analysis.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Saved: {output_path / 'scalability_analysis.png'}")
+
+    def _create_summary_table(self, statistics: Dict, output_path: Path):
+        """Create a summary table image"""
+        fig, ax = plt.subplots(figsize=(12, 6))
+        ax.axis('tight')
+        ax.axis('off')
+
+        # Prepare table data
+        table_data = []
+        headers = ['Active Domains', 'Mean (ms)', 'Median (ms)', 'Std Dev (ms)',
+                   'CV (%)', 'Min (ms)', 'Max (ms)', 'Sample Size']
+
+        for num_domains in sorted(statistics.keys()):
+            overall = statistics[num_domains]['overall']
+            row = [
+                f"{num_domains}",
+                f"{overall['mean']:.2f}",
+                f"{overall['median']:.2f}",
+                f"{overall['std']:.2f}",
+                f"{overall['cv']:.2f}",
+                f"{overall['min']:.2f}",
+                f"{overall['max']:.2f}",
+                f"{overall['count']:,}"
+            ]
+            table_data.append(row)
+
+        # Create table
+        table = ax.table(cellText=table_data, colLabels=headers,
+                         cellLoc='center', loc='center',
+                         colWidths=[0.12] * len(headers))
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1.2, 2)
+
+        # Style the table
+        for i in range(len(headers)):
+            table[(0, i)].set_facecolor('#4CAF50')
+            table[(0, i)].set_text_props(weight='bold', color='white')
+
+        for i in range(1, len(table_data) + 1):
+            for j in range(len(headers)):
+                if i % 2 == 0:
+                    table[(i, j)].set_facecolor('#f0f0f0')
+
+        plt.title('Network Performance Summary Statistics',
+                  fontsize=14, fontweight='bold', pad=20)
+        plt.savefig(output_path / 'summary_table.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Saved: {output_path / 'summary_table.png'}")
+
+    def perform_statistical_tests(self, statistics: Dict):
+        """Perform statistical tests to support thesis claims"""
+        print("\n" + "=" * 80)
+        print("STATISTICAL ANALYSIS FOR THESIS")
+        print("=" * 80)
+
+        # Test for significant differences between simulations
+        simulation_pairs = []
+        for i, num_domains_i in enumerate(sorted(statistics.keys())):
+            for j, num_domains_j in enumerate(sorted(statistics.keys())):
+                if i < j:
+                    simulation_pairs.append((num_domains_i, num_domains_j))
+
+        print("\nStatistical Tests for Performance Differences:")
+        print("-" * 50)
+
+        for sim1, sim2 in simulation_pairs:
+            # Collect data for both simulations
+            data1 = []
+            data2 = []
+
+            for domain_data in self.simulations[sim1]['data']:
+                q1, q3 = np.percentile(domain_data, [25, 75])
+                iqr = q3 - q1
+                mask = (domain_data >= q1 - 1.5 * iqr) & (domain_data <= q3 + 1.5 * iqr)
+                data1.extend(domain_data[mask])
+
+            for domain_data in self.simulations[sim2]['data']:
+                q1, q3 = np.percentile(domain_data, [25, 75])
+                iqr = q3 - q1
+                mask = (domain_data >= q1 - 1.5 * iqr) & (domain_data <= q3 + 1.5 * iqr)
+                data2.extend(domain_data[mask])
+
+            # Perform Mann-Whitney U test (non-parametric)
+            statistic, p_value = stats.mannwhitneyu(data1, data2, alternative='two-sided')
+
+            # Effect size (Cohen's d approximation)
+            mean1, mean2 = np.mean(data1), np.mean(data2)
+            std_pooled = np.sqrt((np.var(data1) + np.var(data2)) / 2)
+            cohens_d = (mean1 - mean2) / std_pooled if std_pooled > 0 else 0
+
+            print(f"{sim1} vs {sim2} domains:")
+            print(f"  Mann-Whitney U p-value: {p_value:.6f}")
+            print(f"  Effect size (Cohen's d): {cohens_d:.4f}")
+            print(f"  Interpretation: {'Significant' if p_value < 0.05 else 'Not significant'} difference")
+            print(f"  Mean difference: {abs(mean1 - mean2):.2f} ms")
+            print()
+
+        # Trend analysis
+        print("Trend Analysis:")
+        print("-" * 50)
+        domains = sorted(statistics.keys())
+        means = [statistics[d]['overall']['mean'] for d in domains]
+
+        # Linear regression for trend
+        slope, intercept, r_value, p_value, std_err = stats.linregress(domains, means)
+
+        print(f"Linear trend in mean travel time:")
+        print(f"  Slope: {slope:.4f} ms per additional domain")
+        print(f"  R²: {r_value ** 2:.4f}")
+        print(f"  P-value: {p_value:.6f}")
+        print(f"  Interpretation: {'Significant' if p_value < 0.05 else 'No significant'} trend")
+
+        if abs(slope) < 0.1:  # Arbitrary threshold for "stable"
+            print(f"  ✓ THESIS SUPPORT: Slope is very small ({slope:.4f}), indicating stable performance")
+        else:
+            print(f"  ⚠ ATTENTION: Slope of {slope:.4f} may indicate performance degradation")
 
 
-# Function to downsample dataOld for plotting
-def downsample_data(data, indices=None, max_points=100_000):
-    """Downsample dataOld to a manageable size for plotting"""
-    if indices is None:
-        indices = np.arange(len(data))
+def main():
+    """Main analysis function"""
+    print("Network Simulation Analysis for Thesis")
+    print("=" * 50)
 
-    n = len(data)
-    if n <= max_points:
-        return indices, data
+    # Initialize analyzer
+    analyzer = NetworkSimulationAnalyzer("data")  # Adjust path as needed
 
-    # Calculate downsampling factor
-    factor = int(np.ceil(n / max_points))
-    print(f"Downsampling by factor of {factor} (original: {n}, target: {max_points})")
+    # Load all simulation data
+    simulations = analyzer.load_simulation_data()
 
-    # Method 1: Simple striding (fastest)
-    idx_indices = np.arange(0, n, factor)
-    downsampled_indices = indices[idx_indices]
-    downsampled = data[idx_indices]
+    if not simulations:
+        print("No simulation data found. Please check your data directory structure.")
+        return
 
-    # Find global min and max to make sure they're included
-    global_min_idx = np.argmin(data)
-    global_max_idx = np.argmax(data)
+    # Calculate statistics
+    print("\nCalculating statistics...")
+    statistics = analyzer.calculate_statistics()
 
-    # Ensure we add global min/max if they weren't in our sample
-    if global_min_idx % factor != 0:
-        downsampled_indices = np.append(downsampled_indices, indices[global_min_idx])
-        downsampled = np.append(downsampled, data[global_min_idx])
-    if global_max_idx % factor != 0:
-        downsampled_indices = np.append(downsampled_indices, indices[global_max_idx])
-        downsampled = np.append(downsampled, data[global_max_idx])
+    # Print summary
+    analyzer.print_statistics_summary(statistics)
 
-    # Sort by indices
-    sorted_order = np.argsort(downsampled_indices)
-    return downsampled_indices[sorted_order], downsampled[sorted_order]
+    # Perform statistical tests
+    analyzer.perform_statistical_tests(statistics)
+
+    # Create all plots
+    print("\nGenerating plots...")
+    analyzer.create_comparison_plots(statistics)
+
+    print("\n" + "=" * 80)
+    print("ANALYSIS COMPLETE!")
+    print("=" * 80)
+    print("Generated files:")
+    print("- time_series_stability.png: Shows stability over time")
+    print("- boxplot_comparison.png: Distribution comparison")
+    print("- distribution_comparison.png: Density plots")
+    print("- scalability_analysis.png: Performance vs load analysis")
+    print("- summary_table.png: Statistical summary table")
+    print("\nThese plots should support your thesis that the network")
+    print("implementation maintains stable performance regardless of load.")
 
 
-# Path to your dataOld file
-file_path = 'data/nzt5/domain_app5.csv'  # Change to your actual file path
-
-# Read the dataOld
-travel_times = read_data(file_path)
-
-# Check if we have dataOld
-if len(travel_times) == 0:
-    print("No dataOld was read. Exiting.")
-    exit()
-
-# Convert to milliseconds for better readability
-travel_times_ms = travel_times * 1000
-
-# Calculate statistics on the full dataset
-print("Calculating statistics for original dataOld...")
-orig_mean = np.mean(travel_times_ms)
-orig_median = np.median(travel_times_ms)
-orig_min = np.min(travel_times_ms)
-orig_max = np.max(travel_times_ms)
-orig_std = np.std(travel_times_ms)
-
-print(f"Original dataOld statistics:")
-print(f"- Total points: {len(travel_times_ms):,}")
-print(f"- Min: {orig_min:.2f} ms")
-print(f"- Max: {orig_max:.2f} ms")
-print(f"- Mean: {orig_mean:.2f} ms")
-print(f"- Median: {orig_median:.2f} ms")
-print(f"- Std Dev: {orig_std:.2f} ms")
-
-# Remove outliers
-print("\nRemoving outliers...")
-# Choose outlier removal method: 'iqr', 'std', 'percentile', or None
-outlier_method = 'percentile'  # Standard IQR method
-outlier_threshold = 0.5  # Standard threshold for IQR method
-
-if outlier_method:
-    filtered_data, outlier_mask = remove_outliers(travel_times_ms, method=outlier_method, threshold=outlier_threshold)
-
-    # Keep track of original indices for the filtered dataOld
-    original_indices = np.arange(len(travel_times_ms))[outlier_mask]
-
-    # Calculate statistics on the filtered dataset
-    print("\nCalculating statistics for filtered dataOld...")
-    mean_time = np.mean(filtered_data)
-    median_time = np.median(filtered_data)
-    min_time = np.min(filtered_data)
-    max_time = np.max(filtered_data)
-    std_dev = np.std(filtered_data)
-
-    print(f"Filtered dataOld statistics:")
-    print(f"- Total points: {len(filtered_data):,}")
-    print(f"- Min: {min_time:.2f} ms")
-    print(f"- Max: {max_time:.2f} ms")
-    print(f"- Mean: {mean_time:.2f} ms")
-    print(f"- Median: {median_time:.2f} ms")
-    print(f"- Std Dev: {std_dev:.2f} ms")
-else:
-    # No outlier removal
-    filtered_data = travel_times_ms
-    original_indices = np.arange(len(travel_times_ms))
-    mean_time = orig_mean
-    median_time = orig_median
-    min_time = orig_min
-    max_time = orig_max
-    std_dev = orig_std
-
-# Downsample dataOld for plotting
-print("\nDownsampling dataOld for plotting...")
-indices, downsampled_data = downsample_data(filtered_data, indices=original_indices, max_points=50000)
-
-# Create a figure
-print("Creating figure...")
-plt.figure(figsize=(12, 8))
-
-# Plot the downsampled dataOld
-plt.scatter(indices, downsampled_data, s=2, color='blue', alpha=0.5,
-            label=f'Data points (downsampled from {len(filtered_data):,} to {len(indices):,})')
-
-# For very large datasets, don't connect the points with lines
-if len(indices) < 10000:
-    plt.plot(indices, downsampled_data, 'b-', alpha=0.2, linewidth=0.3)
-
-# Add mean and median lines
-plt.axhline(y=mean_time, color='r', linestyle='-',
-            label=f'Mean: {mean_time:.2f} ms')
-plt.axhline(y=median_time, color='g', linestyle='--',
-            label=f'Median: {median_time:.2f} ms')
-
-# Add min and max annotations - we know these are in our downsampled dataOld
-min_plot_idx = np.argmin(downsampled_data)
-max_plot_idx = np.argmax(downsampled_data)
-
-plt.annotate(f'Min: {min_time:.2f} ms',
-             xy=(indices[min_plot_idx], downsampled_data[min_plot_idx]),
-             xytext=(indices[min_plot_idx], downsampled_data[min_plot_idx] - 0.05 * (max_time - min_time)),
-             arrowprops=dict(arrowstyle="->", color='darkblue'),
-             color='darkblue', fontsize=9)
-
-plt.annotate(f'Max: {max_time:.2f} ms',
-             xy=(indices[max_plot_idx], downsampled_data[max_plot_idx]),
-             xytext=(indices[max_plot_idx], downsampled_data[max_plot_idx] + 0.05 * (max_time - min_time)),
-             arrowprops=dict(arrowstyle="->", color='darkred'),
-             color='darkred', fontsize=9)
-
-# Set labels and title
-if outlier_method:
-    plt.title(f'Time Series of Network Travel Times - Outliers Removed ({outlier_method.upper()})',
-              fontsize=14, fontweight='bold')
-else:
-    plt.title(f'Time Series of Network Travel Times (from {len(travel_times_ms):,} points)',
-              fontsize=14, fontweight='bold')
-
-plt.xlabel('Measurement Index', fontsize=12)
-plt.ylabel('Travel Time (milliseconds)', fontsize=12)
-
-# Add grid
-plt.grid(True, linestyle='--', alpha=0.7)
-
-# Add legend in a fixed position rather than 'best' to avoid slow performance
-plt.legend(loc='upper right')
-
-# Set y-axis limits to give some padding
-y_range = max_time - min_time
-plt.ylim(min_time - 0.2 * y_range, max_time + 0.2 * y_range)
-
-# Make the plot look nice
-plt.tight_layout()
-
-# Save the figure
-print("Saving figure...")
-if outlier_method:
-    filename = f'images/{outlier_method}/{file_path.split('/')[1]}.png'
-else:
-    filename = 'large_network_times.png'
-plt.savefig(filename, dpi=300, bbox_inches='tight')
-print(f"Figure saved as '{filename}'")
-
-# Print execution time
-print(f"Total execution time: {time.time() - start_time:.2f} seconds")
-
-# Show the plot
-plt.show()
+if __name__ == "__main__":
+    main()
